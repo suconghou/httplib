@@ -15,6 +15,7 @@
 - 支持文件流传输
 - 支持keep-alive连接
 - 解析query和cookie的辅助方法
+- 支持chunked请求的trailer headers
 
 ## 快速开始
 
@@ -146,7 +147,7 @@ int main() {
 
 ## 构建
 
-编译时需先将https://github.com/suconghou/poll_server的`poll.cpp`文件拷贝到当前目录。
+编译时需先将 https://github.com/suconghou/poll_server 的`poll.cpp`文件拷贝到当前目录。
 
 `main.cpp` 和 `httplibext.cpp` 为一个示例的HTTP静态文件服务器，支持目录浏览和Range请求。
 

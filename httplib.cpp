@@ -588,8 +588,7 @@ public:
         {
             if (out_bytes < 1 || this->state != State::HEADERS_SENT)
             {
-                // 发送失败了，TODO log 优化
-                perror("send failed");
+                // 发送失败
                 f->close();
                 this->stream_callback.reset(); // 传输完成，释放引用
                 return;
