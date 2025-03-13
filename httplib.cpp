@@ -24,7 +24,7 @@
 
 static constexpr size_t MAX_BUFFER_SIZE = 20 * 1024 * 1024;
 
-static const std::map<int, std::string> status_codes = {
+static const std::unordered_map<int, std::string> status_codes = {
     {100, "Continue"},
     {101, "Switching Protocols"},
     {102, "Processing"},
@@ -1510,9 +1510,9 @@ private:
     const std::string METHOD_DELETE = "DELETE";
     const std::string METHOD_OPTIONS = "OPTIONS";
 
-    std::map<std::string, std::vector<route>> routes;
+    std::unordered_map<std::string, std::vector<route>> routes;
 
-    std::map<int, std::shared_ptr<ConnCtx>> clients;
+    std::unordered_map<int, std::shared_ptr<ConnCtx>> clients;
     int sockets = 0;
 
     void defaultHandler(Request *req, Response *res)
@@ -1548,50 +1548,50 @@ public:
     {
     }
     // 返回socket个数，HTTP客户端个数
-    std::pair<int, int> status()
+    std::pair<int, int> status() const
     {
         return {sockets, clients.size()};
     }
 
     self &head(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_HEAD].push_back({std::regex(pattern), std::move(handler)});
+        routes[METHOD_HEAD].emplace_back(std::regex(pattern), std::move(handler));
         return *this;
     }
 
     self &get(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_GET].push_back({std::regex(pattern), std::move(handler)});
+        routes[METHOD_GET].emplace_back(std::regex(pattern), std::move(handler));
         return *this;
     }
 
     self &post(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_POST].push_back({std::regex(pattern), std::move(handler)});
+        routes[METHOD_POST].emplace_back(std::regex(pattern), std::move(handler));
         return *this;
     }
 
     self &put(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_PUT].push_back({std::regex(pattern), std::move(handler)});
+        routes[METHOD_PUT].emplace_back(std::regex(pattern), std::move(handler));
         return *this;
     }
 
     self &patch(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_PATCH].push_back({std::regex(pattern), std::move(handler)});
+        routes[METHOD_PATCH].emplace_back(std::regex(pattern), std::move(handler));
         return *this;
     }
 
     self &delete_(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_DELETE].push_back({std::regex(pattern), std::move(handler)});
+        routes[METHOD_DELETE].emplace_back(std::regex(pattern), std::move(handler));
         return *this;
     }
 
     self &options(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_OPTIONS].push_back({std::regex(pattern), std::move(handler)});
+        routes[METHOD_OPTIONS].emplace_back(std::regex(pattern), std::move(handler));
         return *this;
     }
 
