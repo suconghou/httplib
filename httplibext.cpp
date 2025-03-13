@@ -1,5 +1,6 @@
 #pragma once
 #include "httplib.cpp"
+#include <filesystem>
 #include <unordered_map>
 
 // 全局静态 MIME 类型映射表
@@ -158,7 +159,7 @@ void serve_static(const std::string root, Request *req, Response *res)
             res->status(500)->end("500 Internal Server Error");
             return;
         }
-        auto const size = std::filesystem::file_size(path);
+        const long size = std::filesystem::file_size(path);
 
         // 获取文件的最后修改时间
         auto file_time = std::filesystem::last_write_time(path);
@@ -178,7 +179,7 @@ void serve_static(const std::string root, Request *req, Response *res)
         }
 
         const auto &rr = map_get_key_value(req->headers, "range");
-        std::optional<std::pair<int, int>> r;
+        std::optional<std::pair<long, long>> r;
         if (!rr || !(r = parse_range(rr.value(), size)))
         {
             std::map<std::string, std::string> headers = {
