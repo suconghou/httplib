@@ -255,7 +255,7 @@ std::optional<std::string> static decode_path(const std::string &p)
                     {
                         return std::nullopt;
                     }
-                    items.emplace_back(v.value());
+                    items.emplace_back(std::move(v.value()));
                 }
             }
             buf.clear();
@@ -428,15 +428,16 @@ private:
     {
         const auto t = status_codes.find(status_code);
         const std::string &text = t == status_codes.end() ? "" : t->second;
-        std::ostringstream oss;
-        oss << std::format("HTTP/1.1 {} {}\r\nDate: {}\r\n", status_code, text, date());
+        std::string result;
+        result.reserve(1024);
+        result.append("HTTP/1.1 ").append(std::to_string(status_code)).append(" ").append(text).append("\r\nDate: ").append(date()).append("\r\n");
         if (content_length >= 0)
         {
-            oss << std::format("content-length: {}\r\n", content_length);
+            result.append("Content-Length: ").append(std::to_string(content_length)).append("\r\n");
         }
         else
         {
-            oss << "transfer-encoding: chunked\r\n";
+            result.append("Transfer-Encoding: chunked\r\n");
         }
         for (auto const &[key, val] : headers)
         {
@@ -452,11 +453,11 @@ private:
                 {
                     throw std::runtime_error(std::format("Invalid header value: {}", val));
                 }
-                oss << std::format("{}: {}\r\n", k, val);
+                result.append(k).append(": ").append(val).append("\r\n");
             }
         }
-        oss << "\r\n";
-        return oss.str();
+        result.append("\r\n");
+        return result;
     }
 
 public:
@@ -581,7 +582,7 @@ public:
         {
             writeHead(status_code, headers);
         }
-        char buf[65536];
+        char buf[131072];
         int n = f->read(buf, sizeof(buf));
         if (n < 1)
         {
@@ -597,7 +598,7 @@ public:
                 this->stream_callback.reset(); // 传输完成，释放引用
                 return;
             }
-            char buf[65536];
+            char buf[131072];
             int n = f->read(buf, sizeof(buf));
             if (n > 0)
             {
@@ -694,7 +695,7 @@ public:
 
     const std::map<std::string, std::string> &query()
     {
-        if (this->_query.empty())
+        if (this->_query.empty() && !this->rawQuery.empty())
         {
             std::stringstream q(this->rawQuery);
             std::string param;
@@ -1476,9 +1477,14 @@ public:
         // 拼接之前数据
         buffer.append(b, n);
         int eat = 0;
-        while (buffer.size() > 0 && (eat = parse(buffer.data(), buffer.size())) > 0)
+        int eaten = 0;
+        while (buffer.size() > eaten && (eat = parse(buffer.data() + eaten, buffer.size() - eaten)) > 0)
         {
-            buffer.erase(0, eat); // 删除已解析的数据
+            eaten += eat;
+        }
+        if (eaten > 0)
+        {
+            buffer.erase(0, eaten); // 删除已解析的数据
         }
         if (buffer.size() > MAX_BUFFER_SIZE) // 限制解析缓冲区大小，防止内存耗尽
         {

@@ -104,7 +104,7 @@ static std::string path_join(const std::string &dir, const std::string &name)
 
 static std::optional<std::pair<long, long>> parse_range(const std::string &range_str, long file_size)
 {
-    std::regex range_regex(R"(bytes=(\d*)-(\d*))");
+    static const std::regex range_regex(R"(bytes=(\d*)-(\d*))", std::regex::optimize);
     std::smatch match;
     if (!std::regex_match(range_str, match, range_regex))
     {
