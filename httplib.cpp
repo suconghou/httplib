@@ -1477,7 +1477,7 @@ public:
         // 拼接之前数据
         buffer.append(b, n);
         int eat = 0;
-        int eaten = 0;
+        unsigned long eaten = 0;
         while (buffer.size() > eaten && (eat = parse(buffer.data() + eaten, buffer.size() - eaten)) > 0)
         {
             eaten += eat;
