@@ -392,7 +392,7 @@ private:
         return enqueue(std::string(buf, n), callback);
     }
     // 注意：当非chunked模式下，如果发送0字节，回调是同步执行的，底层忽略发送
-    int enqueue(const std::string &s, callback callback = nullptr)
+    int enqueue(std::string s, callback callback = nullptr)
     {
         // chunked编码下允许发送0字节（是作为结束符），否则不允许发送0字节
         if (content_length >= 0)
@@ -405,7 +405,7 @@ private:
                 }
                 return 0;
             }
-            return ioServer.write(fd, s, callback);
+            return ioServer.write(fd, std::move(s), callback);
         }
         std::stringstream ss;
         ss << std::hex << s.length() << "\r\n";
@@ -1161,9 +1161,8 @@ private:
 
     bool onMethod(const char *buf, int n)
     {
-        std::string m = std::string(buf, n);
-        this->request->method = m;
-        return allowedMethods.contains(m);
+        this->request->method = std::string(buf, n);
+        return allowedMethods.contains(this->request->method);
     }
     bool onRequestURI(const char *buf, int n)
     {
@@ -1172,10 +1171,9 @@ private:
     }
     bool onHttpVersion(const char *buf, int n)
     {
-        std::string v = std::string(buf, n);
-        http_10 = v == "HTTP/1.0";
-        http_11 = v == "HTTP/1.1";
-        this->request->version = v;
+        this->request->version = std::string(buf, n);
+        http_10 = this->request->version == "HTTP/1.0";
+        http_11 = this->request->version == "HTTP/1.1";
         return http_10 || http_11;
     }
     // 此处存储key状态
@@ -1183,7 +1181,7 @@ private:
     {
         auto s = std::string(buf, n);
         std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-        this->h_key = s;
+        this->h_key = std::move(s);
         return true;
     }
     // 此处检测key已经解析，完成value解析后，key缓存释放
@@ -1193,8 +1191,7 @@ private:
         {
             return false;
         }
-        auto s = trim_whitespace(std::string(buf, n));
-        this->request->headers[this->h_key] = s;
+        this->request->headers[this->h_key] = trim_whitespace(std::string(buf, n));
         this->h_key.clear();
         return true;
     }
@@ -1610,18 +1607,18 @@ public:
     {
         return [handler, max_size](Request *req, Response *res)
         {
-            req->data([req, res, handler](const char *buf, int n, bool finish)
+            req->data([req, res, f = std::move(handler)](const char *buf, int n, bool finish)
             {
                 if (finish)
                 {
-                    handler(req, res, buf, n);
+                    f(req, res, buf, n);
                 }
                 return true;
             }, max_size);
         };
     }
 
-    bool start(int port, std::function<int()> timer, std::string host = "")
+    bool start(int port, std::function<int()> timer, const std::string &host = "")
     {
         auto on_loop = [this, timer](poll_server &a, int n)
         {
