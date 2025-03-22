@@ -773,16 +773,14 @@ class ConnCtx
 
     typedef enum
     {
-        STATE_METHOD,        // 开始解析HTTP请求方法，应全部由大写字母组成，1-10个字符，遇到一个空格完成解析
-        STATE_REQUEST_LINE,  // 开始解析请求行 需要为ASCII可见字符，1-1000个字符， 遇到一个空格完成解析
-        STATE_HTTP_VERSION,  // 开始解析HTTP版本号，需要为ASCII可见字符，1-10个字符，遇到一个换行完成解析
-        STATE_HEADERS_KEY,   // 开始解析Header字段名，需要为ASCII可见字符，1-100个字符，遇到一个:号完成解析
-        STATE_HEADERS_VALUE, // 开始解析Header字段值，需要为ASCII可见字符，1-900个字符，遇到一个换行完成解析，如果遇到两个换行则跳转到Body解析开始
+        STATE_METHOD,        // 开始解析HTTP请求方法，应全部由大写字母组成，1-8个字符，遇到一个空格完成解析
+        STATE_REQUEST_LINE,  // 开始解析请求行 需要为ASCII可见字符，1-2000个字符， 遇到一个空格完成解析
+        STATE_HTTP_VERSION,  // 开始解析HTTP版本号，需要为ASCII可见字符，1-8个字符，遇到一个换行完成解析
+        STATE_HEADERS_KEY,   // 开始解析Header字段名，需要为ASCII可见字符，1-50个字符，遇到一个:号完成解析
+        STATE_HEADERS_VALUE, // 开始解析Header字段值，需要为ASCII可见字符，1-2000个字符，遇到一个换行完成解析，如果遇到两个换行则跳转到Body解析开始
         STATE_BODY,          // Body数据接收中，Body数据解析完毕后跳转回STATE_METHOD最开始
     } State;
 
-    // HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS
-    static const std::set<char> allowedMethodChars;
     static const std::set<std::string> allowedMethods;
     static const std::set<std::string> bodyMethods;
 
@@ -830,11 +828,10 @@ private:
             while (offset < end)
             {
                 char c = *offset++;
-                // HEAD, GET, POST, PUT, PATCH, DELETE, OPTIONS
-                if (allowedMethodChars.contains(c))
+                if (c >= 'A' && c <= 'Z')
                 {
                     method_len++;
-                    if (method_len > 10)
+                    if (method_len > 8)
                     {
                         return ERROR_LENGTH_EXCEEDED;
                     }
@@ -880,7 +877,7 @@ private:
                         return ERROR_INVALID_CHAR;
                     }
                     req_len++;
-                    if (req_len > 1000)
+                    if (req_len > 2000)
                     {
                         return ERROR_LENGTH_EXCEEDED;
                     }
@@ -922,7 +919,7 @@ private:
                 if (c == 'H' || c == 'T' || c == 'P' || c == '/' || c == '1' || c == '.' || c == '0')
                 {
                     version_len++;
-                    if (version_len > 10)
+                    if (version_len > 8)
                     {
                         return ERROR_LENGTH_EXCEEDED;
                     }
@@ -982,7 +979,7 @@ private:
                         return ERROR_INVALID_CHAR;
                     }
                     header_key_len++;
-                    if (header_key_len > 100)
+                    if (header_key_len > 50)
                     {
                         return ERROR_LENGTH_EXCEEDED;
                     }
@@ -1034,7 +1031,7 @@ private:
                 if (c >= 0x20 && c <= 0x7e)
                 {
                     header_value_len++;
-                    if (header_value_len > 900)
+                    if (header_value_len > 2000)
                     {
                         return ERROR_LENGTH_EXCEEDED;
                     }
@@ -1492,9 +1489,15 @@ public:
     }
 };
 
-const std::set<char> ConnCtx::allowedMethodChars{'A', 'D', 'E', 'G', 'H', 'L', 'O', 'P', 'S', 'T', 'U'};
-const std::set<std::string> ConnCtx::bodyMethods{"POST", "PUT", "PATCH"};
-const std::set<std::string> ConnCtx::allowedMethods{"HEAD", "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"};
+static constexpr std::string METHOD_HEAD = "HEAD";
+static constexpr std::string METHOD_GET = "GET";
+static constexpr std::string METHOD_POST = "POST";
+static constexpr std::string METHOD_PUT = "PUT";
+static constexpr std::string METHOD_PATCH = "PATCH";
+static constexpr std::string METHOD_DELETE = "DELETE";
+static constexpr std::string METHOD_OPTIONS = "OPTIONS";
+const std::set<std::string> ConnCtx::bodyMethods{METHOD_POST, METHOD_PUT, METHOD_PATCH};
+const std::set<std::string> ConnCtx::allowedMethods{METHOD_HEAD, METHOD_GET, METHOD_POST, METHOD_PUT, METHOD_PATCH, METHOD_DELETE, METHOD_OPTIONS};
 
 using Handler = std::function<void(Request *, Response *)>;
 
@@ -1509,16 +1512,7 @@ class Server
     using self = Server;
 
 private:
-    const std::string METHOD_HEAD = "HEAD";
-    const std::string METHOD_GET = "GET";
-    const std::string METHOD_POST = "POST";
-    const std::string METHOD_PUT = "PUT";
-    const std::string METHOD_PATCH = "PATCH";
-    const std::string METHOD_DELETE = "DELETE";
-    const std::string METHOD_OPTIONS = "OPTIONS";
-
     std::unordered_map<std::string, std::vector<route>> routes;
-
     std::unordered_map<int, std::shared_ptr<ConnCtx>> clients;
     int sockets = 0;
 
