@@ -1622,12 +1622,13 @@ public:
 
         auto on_open = [this](poll_server &a, int fd)
         {
-            clients[fd] = std::make_shared<ConnCtx>(fd, a, [this](const ConnCtx &c)
-            { this->execute(c); });
+            if (fd > 0)
+            {
+                clients[fd] = std::make_shared<ConnCtx>(fd, a, [this](const ConnCtx &c)
+                { this->execute(c); });
+            }
         };
 
-        // n值为0代表对方关闭了,(recv返回0)
-        // -1 代表 收到中断（POLLHUP事件）
         auto on_data = [this](poll_server &a, int fd, const char *buf, int n)
         {
             if (n < 1)
