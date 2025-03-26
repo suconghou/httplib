@@ -378,7 +378,7 @@ private:
     long content_length = -1; // 没有指定content-length，不是第一次就调用end，触发chunked下行编码
     std::shared_ptr<callback> stream_callback = nullptr;
 
-    friend void _reset_response(std::shared_ptr<Response> &obj, bool is_once_request)
+    friend void _reset_response(std::unique_ptr<Response> &obj, bool is_once_request)
     {
         obj->is_once_request = is_once_request;
         obj->state = State::READY;
@@ -629,7 +629,7 @@ private:
     std::function<bool(const char *, int, bool)> _on_body_buf = nullptr;
 
     // 返回false时中断body接收，断开链接
-    friend bool _call_on_body_buf(std::shared_ptr<Request> &obj, const char *buf, int n, bool finish)
+    friend bool _call_on_body_buf(std::unique_ptr<Request> &obj, const char *buf, int n, bool finish)
     {
         if (obj->_on_body_buf)
         {
@@ -637,7 +637,7 @@ private:
         }
         return true;
     }
-    friend void _reset_req(std::shared_ptr<Request> &obj)
+    friend void _reset_req(std::unique_ptr<Request> &obj)
     {
         std::stringstream ss;
         obj->_body->swap(ss);
@@ -1461,9 +1461,9 @@ private:
     }
 
 public:
-    std::shared_ptr<Request> request;
-    std::shared_ptr<Response> response;
-    ConnCtx(int fd, poll_server &a, std::function<void(self &)> f) : execute(f), request(std::make_shared<Request>()), response(std::make_shared<Response>(fd, a)) {};
+    std::unique_ptr<Request> request;
+    std::unique_ptr<Response> response;
+    ConnCtx(int fd, poll_server &a, std::function<void(self &)> f) : execute(f), request(std::make_unique<Request>()), response(std::make_unique<Response>(fd, a)) {};
 
     // 返回false代表协议解析错误，需要中断链接
     bool recv(const char *b, int n)
@@ -1523,7 +1523,7 @@ private:
 
     void execute(const ConnCtx &c)
     {
-        auto r = c.request;
+        const auto &r = c.request;
         try
         {
             // 这里for不需要判空，没有异常
