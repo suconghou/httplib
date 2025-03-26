@@ -623,7 +623,7 @@ public:
 class Request
 {
 private:
-    std::shared_ptr<std::stringstream> _body;
+    std::unique_ptr<std::stringstream> _body;
     std::map<std::string, std::string> _query;
     std::map<std::string, std::string> _cookies;
     std::function<bool(const char *, int, bool)> _on_body_buf = nullptr;
@@ -654,7 +654,7 @@ private:
     }
 
 public:
-    Request() : _body(std::make_shared<std::stringstream>())
+    Request() : _body(std::make_unique<std::stringstream>())
     {
     }
     std::string method;
@@ -673,17 +673,18 @@ public:
     // 如果max_body_size>1则内部收集完整body后回调，并要求body数据小于设定值
     void data(std::function<bool(const char *, int, bool)> f, int max_body_size = 0)
     {
-        _on_body_buf = max_body_size > 1 ? [body = this->_body, f = std::move(f), maxsize = max_body_size](const char *buf, int n, bool finish)
+        _on_body_buf = max_body_size > 1 ? [this, f = std::move(f), maxsize = max_body_size](const char *buf, int n, bool finish)
         {
-            if (body->write(buf, n).tellp() > maxsize)
+            if (this->_body->write(buf, n).tellp() > maxsize)
             {
                 return false;
             }
             if (finish)
             {
-                const std::string &s = body->str();
+                const std::string &s = this->_body->str();
                 bool r = f(s.c_str(), s.size(), true);
-                body->clear();
+                this->_body->str("");
+                this->_body->clear();
                 return r;
             }
             else
