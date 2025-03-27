@@ -115,9 +115,33 @@ static std::optional<std::pair<long, long>> parse_range(const std::string &range
     return std::make_pair(start, end);
 }
 
-void serve_static(const std::string root, Request *req, Response *res)
+static std::optional<std::string> resolve_safe_path(const std::filesystem::path &root, const std::filesystem::path &request_path)
 {
-    const std::string path = root + req->path;
+    try
+    {
+        auto canonical_root = std::filesystem::canonical(std::filesystem::absolute(root));
+        auto full_path = std::filesystem::canonical(canonical_root / request_path.relative_path()).string();
+        if (full_path.find(canonical_root.string()) == 0)
+        {
+            return full_path;
+        }
+    }
+    catch (...)
+    {
+        // 捕获所有异常
+    }
+    return std::nullopt;
+}
+
+void serve_static(const std::string &root, Request *req, Response *res)
+{
+    auto safe_path = resolve_safe_path(root, req->path);
+    if (!safe_path)
+    {
+        res->status(404)->end("404 Not Found");
+        return;
+    }
+    auto path = *safe_path;
     // 检查文件或目录是否存在
     if (!std::filesystem::exists(path))
     {

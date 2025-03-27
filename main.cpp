@@ -15,7 +15,7 @@ private:
 
     void file(Request *req, Response *res) // 普通成员方法
     {
-        serve_static(serve_directory.c_str(), req, res); // 访问非静态成员变量
+        serve_static(serve_directory, req, res); // 访问非静态成员变量
     }
 
 public:
