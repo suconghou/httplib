@@ -36,6 +36,8 @@ static constexpr std::string METHOD_PATCH = "PATCH";
 static constexpr std::string METHOD_DELETE = "DELETE";
 static constexpr std::string METHOD_OPTIONS = "OPTIONS";
 
+static const std::set<std::string> METHODS{METHOD_HEAD, METHOD_GET, METHOD_POST, METHOD_PUT, METHOD_PATCH, METHOD_DELETE, METHOD_OPTIONS};
+
 static const std::unordered_map<int, std::string> status_codes = {
     {100, "Continue"},
     {101, "Switching Protocols"},
@@ -790,8 +792,6 @@ class ConnCtx
         STATE_BODY,          // Body数据接收中，Body数据解析完毕后跳转回STATE_METHOD最开始
     } State;
 
-    static const std::set<std::string> allowedMethods;
-
 private:
     State state = STATE_METHOD;
     bool http_10 = false;
@@ -1167,7 +1167,7 @@ private:
     bool onMethod(const char *buf, int n)
     {
         this->request->method = std::string(buf, n);
-        return allowedMethods.contains(this->request->method);
+        return METHODS.contains(this->request->method);
     }
     bool onRequestURI(const char *buf, int n)
     {
@@ -1494,8 +1494,6 @@ public:
         return eat >= 0;
     }
 };
-
-const std::set<std::string> ConnCtx::allowedMethods{METHOD_HEAD, METHOD_GET, METHOD_POST, METHOD_PUT, METHOD_PATCH, METHOD_DELETE, METHOD_OPTIONS};
 
 using Handler = std::function<void(Request *, Response *)>;
 
