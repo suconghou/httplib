@@ -721,7 +721,7 @@ public:
                         auto value = url_decode(param.substr(equal_pos + 1));
                         if (value)
                         {
-                            this->_query[key.value()] = value.value();
+                            this->_query[std::move(key.value())] = std::move(value.value());
                         }
                     }
                 }
@@ -730,7 +730,7 @@ public:
                     auto key = url_decode(param);
                     if (key)
                     {
-                        this->_query[key.value()] = "";
+                        this->_query[std::move(key.value())] = "";
                     }
                 }
             }
@@ -759,7 +759,7 @@ public:
                             auto value = url_decode(cookie.substr(equal_pos + 1));
                             if (value)
                             {
-                                this->_cookies[key.value()] = value.value();
+                                this->_cookies[std::move(key.value())] = std::move(value.value());
                             }
                         }
                     }
@@ -1093,7 +1093,7 @@ private:
                                     {
                                         return ERROR_VALIDATION_FAILED;
                                     }
-                                    this->request->path = path.value();
+                                    this->request->path = std::move(path.value());
                                 }
                                 else
                                 {
@@ -1102,10 +1102,10 @@ private:
                                     {
                                         return ERROR_VALIDATION_FAILED;
                                     }
-                                    this->request->path = path.value();
+                                    this->request->path = std::move(path.value());
                                     std::string qq = this->request->uri.substr(q + 1);
                                     auto f = qq.find('#');
-                                    this->request->rawQuery = f == std::string::npos ? qq : qq.substr(0, f);
+                                    this->request->rawQuery = f == std::string::npos ? std::move(qq) : qq.substr(0, f);
                                 }
                                 // 此时，路由对应函数调用执行
                                 _reset_response(this->response, this->http_10 || map_key_value_eq(this->request->headers, "connection", "close"));
