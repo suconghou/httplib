@@ -783,7 +783,6 @@ class ConnCtx
     } State;
 
     static const std::set<std::string> allowedMethods;
-    static const std::set<std::string> bodyMethods;
 
 private:
     State state = STATE_METHOD;
@@ -1436,15 +1435,9 @@ private:
 
     // 每次回调部分body数据,当body解析完毕本函数返回true，即使没有body数据，本函数也会回调一次空数据
     // 返回值是本次已解析的字节，通常返回值<=n,当返回-1时，上层需要处理错误终止解析， 如果完成一个解析将返回true
-    // 请求方法 POST PUT PATCH 才有body
     std::pair<int, bool> onBody(const char *buf, int n)
     {
-        const std::string &m = this->request->method;
-        if (!bodyMethods.contains(m))
-        {
-            return {0, true};
-        }
-        else if (this->body_chunked)
+        if (this->body_chunked)
         {
             return handleChunkedBody(buf, n);
         }
@@ -1457,7 +1450,11 @@ private:
             bool ok = _call_on_body_buf(this->request, buf, read_size, finished);
             return {ok ? read_size : -1, finished};
         }
-        // 没有 transfer-encoding:chunked 也没有content-length，但为POST/PUT/PATCH请求，可能HTTP/1.0
+        else if (request->method == METHOD_GET || request->method == METHOD_HEAD || request->method == METHOD_OPTIONS || request->method == METHOD_DELETE)
+        {
+            return {0, true};
+        }
+        // 没有 transfer-encoding:chunked 也没有content-length，则发来的数据全视为body
         return {n, false};
     }
 
@@ -1497,7 +1494,6 @@ static constexpr std::string METHOD_PUT = "PUT";
 static constexpr std::string METHOD_PATCH = "PATCH";
 static constexpr std::string METHOD_DELETE = "DELETE";
 static constexpr std::string METHOD_OPTIONS = "OPTIONS";
-const std::set<std::string> ConnCtx::bodyMethods{METHOD_POST, METHOD_PUT, METHOD_PATCH};
 const std::set<std::string> ConnCtx::allowedMethods{METHOD_HEAD, METHOD_GET, METHOD_POST, METHOD_PUT, METHOD_PATCH, METHOD_DELETE, METHOD_OPTIONS};
 
 using Handler = std::function<void(Request *, Response *)>;
