@@ -28,6 +28,14 @@
 
 static constexpr size_t MAX_BUFFER_SIZE = 20 * 1024 * 1024;
 
+static constexpr std::string METHOD_HEAD = "HEAD";
+static constexpr std::string METHOD_GET = "GET";
+static constexpr std::string METHOD_POST = "POST";
+static constexpr std::string METHOD_PUT = "PUT";
+static constexpr std::string METHOD_PATCH = "PATCH";
+static constexpr std::string METHOD_DELETE = "DELETE";
+static constexpr std::string METHOD_OPTIONS = "OPTIONS";
+
 static const std::unordered_map<int, std::string> status_codes = {
     {100, "Continue"},
     {101, "Switching Protocols"},
@@ -1487,13 +1495,6 @@ public:
     }
 };
 
-static constexpr std::string METHOD_HEAD = "HEAD";
-static constexpr std::string METHOD_GET = "GET";
-static constexpr std::string METHOD_POST = "POST";
-static constexpr std::string METHOD_PUT = "PUT";
-static constexpr std::string METHOD_PATCH = "PATCH";
-static constexpr std::string METHOD_DELETE = "DELETE";
-static constexpr std::string METHOD_OPTIONS = "OPTIONS";
 const std::set<std::string> ConnCtx::allowedMethods{METHOD_HEAD, METHOD_GET, METHOD_POST, METHOD_PUT, METHOD_PATCH, METHOD_DELETE, METHOD_OPTIONS};
 
 using Handler = std::function<void(Request *, Response *)>;
