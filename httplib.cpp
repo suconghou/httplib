@@ -28,15 +28,15 @@
 
 static constexpr size_t MAX_BUFFER_SIZE = 20 * 1024 * 1024;
 
-static constexpr std::string METHOD_HEAD = "HEAD";
-static constexpr std::string METHOD_GET = "GET";
-static constexpr std::string METHOD_POST = "POST";
-static constexpr std::string METHOD_PUT = "PUT";
-static constexpr std::string METHOD_PATCH = "PATCH";
-static constexpr std::string METHOD_DELETE = "DELETE";
-static constexpr std::string METHOD_OPTIONS = "OPTIONS";
+static constexpr std::string_view METHOD_HEAD = "HEAD";
+static constexpr std::string_view METHOD_GET = "GET";
+static constexpr std::string_view METHOD_POST = "POST";
+static constexpr std::string_view METHOD_PUT = "PUT";
+static constexpr std::string_view METHOD_PATCH = "PATCH";
+static constexpr std::string_view METHOD_DELETE = "DELETE";
+static constexpr std::string_view METHOD_OPTIONS = "OPTIONS";
 
-static const std::set<std::string> METHODS{METHOD_HEAD, METHOD_GET, METHOD_POST, METHOD_PUT, METHOD_PATCH, METHOD_DELETE, METHOD_OPTIONS};
+static const std::set<std::string_view> METHODS{METHOD_HEAD, METHOD_GET, METHOD_POST, METHOD_PUT, METHOD_PATCH, METHOD_DELETE, METHOD_OPTIONS};
 
 static const std::unordered_map<int, std::string> status_codes = {
     {100, "Continue"},
@@ -1508,7 +1508,7 @@ class Server
     using self = Server;
 
 private:
-    std::unordered_map<std::string, std::vector<route>> routes;
+    std::unordered_map<std::string_view, std::vector<route>> routes;
     std::unordered_map<int, std::shared_ptr<ConnCtx>> clients;
     int sockets = 0;
 
