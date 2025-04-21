@@ -73,13 +73,13 @@ static const std::unordered_map<std::string, std::string> mime_types = {
 };
 
 // 辅助函数：根据文件后缀名获取 MIME 类型
-const std::string &get_mime_type(const std::string &path)
+const std::string &get_mime_type(std::string_view path)
 {
     // 找到文件后缀
     auto pos = path.find_last_of('.');
     if (pos != std::string::npos)
     {
-        std::string ext = path.substr(pos);
+        std::string ext(path.substr(pos));
         // 大小写无关处理（将扩展名统一转换为小写）
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         // 在 MIME 表中查找
