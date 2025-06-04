@@ -397,12 +397,12 @@ private:
         obj->stream_callback = nullptr;
     }
 
-    int enqueue(const char *buf, int n, callback callback = nullptr)
+    int enqueue(const char *buf, int n, callback callback = nullptr) const
     {
         return enqueue(std::string(buf, n), callback);
     }
     // 注意：当非chunked模式下，如果发送0字节，回调是同步执行的，底层忽略发送
-    int enqueue(std::string s, callback callback = nullptr)
+    int enqueue(std::string s, callback callback = nullptr) const
     {
         // chunked编码下允许发送0字节（是作为结束符），否则不允许发送0字节
         if (content_length >= 0)
@@ -434,7 +434,7 @@ private:
         return std::all_of(s.begin(), s.end(), [](char c)
         { return c >= 0x20 && c <= 0x7e; });
     }
-    std::string headers(const std::map<std::string, std::string> &headers)
+    std::string headers(const std::map<std::string, std::string> &headers) const
     {
         const auto t = status_codes.find(status_code);
         const std::string &text = t == status_codes.end() ? "" : t->second;
