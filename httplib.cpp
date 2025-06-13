@@ -386,7 +386,7 @@ private:
     State state = State::READY;
     int status_code = 200;
     long content_length = -1; // 没有指定content-length，不是第一次就调用end，触发chunked下行编码
-    std::shared_ptr<callback> stream_callback = nullptr;
+    std::unique_ptr<callback> stream_callback = nullptr;
 
     friend void _reset_response(std::unique_ptr<Response> &obj, bool is_once_request)
     {
@@ -599,7 +599,7 @@ public:
             f->close();
             return end("");
         }
-        this->stream_callback = std::make_shared<callback>([this, f](poll_server &a, int fd, int out_bytes)
+        this->stream_callback = std::make_unique<callback>([this, f](poll_server &a, int fd, int out_bytes)
         {
             if (out_bytes < 1 || this->state != State::HEADERS_SENT)
             {
@@ -1509,7 +1509,7 @@ class Server
 
 private:
     std::unordered_map<std::string_view, std::vector<route>> routes;
-    std::unordered_map<int, std::shared_ptr<ConnCtx>> clients;
+    std::unordered_map<int, std::unique_ptr<ConnCtx>> clients;
     int sockets = 0;
 
     void defaultHandler(Request *req, Response *res)
@@ -1620,7 +1620,7 @@ public:
         {
             if (fd > 0)
             {
-                clients[fd] = std::make_shared<ConnCtx>(fd, a, [this](const ConnCtx &c)
+                clients[fd] = std::make_unique<ConnCtx>(fd, a, [this](const ConnCtx &c)
                 { this->execute(c); });
             }
         };
