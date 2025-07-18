@@ -331,12 +331,12 @@ public:
 class FileReader : public LimitReader
 {
 private:
-    std::shared_ptr<std::ifstream> file;
+    std::unique_ptr<std::ifstream> file;
     long remaining; // 剩余需要读取的字节数
 
 public:
-    FileReader(std::shared_ptr<std::ifstream> f, long length)
-        : file(f), remaining(length) {}
+    FileReader(std::unique_ptr<std::ifstream> f, long length)
+        : file(std::move(f)), remaining(length) {}
 
     // 读取指定大小的数据，但不超过剩余长度
     int read(char *buf, int size) override

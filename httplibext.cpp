@@ -177,7 +177,7 @@ void serve_static(const std::string &root, Request *req, Response *res)
     // 处理文件
     if (std::filesystem::is_regular_file(path))
     {
-        auto file = std::make_shared<std::ifstream>(path, std::ios::binary);
+        auto file = std::make_unique<std::ifstream>(path, std::ios::binary);
         if (!file->is_open())
         {
             res->status(500)->end("500 Internal Server Error");
@@ -210,7 +210,7 @@ void serve_static(const std::string &root, Request *req, Response *res)
                 {"Content-Type", get_mime_type(path)},
                 {"Accept-Ranges", "bytes"},
                 {"Last-Modified", last_modified}};
-            res->length(size)->stream(std::make_shared<FileReader>(file, size), headers);
+            res->length(size)->stream(std::make_shared<FileReader>(std::move(file), size), headers);
             return;
         }
         auto const &[start, end] = r.value();
@@ -230,7 +230,7 @@ void serve_static(const std::string &root, Request *req, Response *res)
             {"Content-Range", std::format("bytes {}-{}/{}", start, end, size)},
             {"Accept-Ranges", "bytes"}};
         // 发送 206 Partial Content 响应
-        res->status(206)->length(length)->stream(std::make_shared<FileReader>(file, length), headers);
+        res->status(206)->length(length)->stream(std::make_shared<FileReader>(std::move(file), length), headers);
         return;
     }
     res->status(404)->end("Not Found");
