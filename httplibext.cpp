@@ -93,16 +93,12 @@ const std::string &get_mime_type(std::string_view path)
     return mime_types.at("default");
 }
 
-static std::string path_join(const std::string &dir, const std::string &name)
+std::string path_join(const std::string &dir, const std::string &name)
 {
-    if (dir.ends_with('/'))
-    {
-        return dir + name;
-    }
-    return dir + "/" + name;
+    return dir.ends_with('/') ? (dir + name) : (dir + "/" + name);
 }
 
-static std::optional<std::pair<long, long>> parse_range(const std::string &range_str, long file_size)
+std::optional<std::pair<long, long>> parse_range(const std::string &range_str, long file_size)
 {
     static const std::regex range_regex(R"(bytes=(\d*)-(\d*))", std::regex::optimize);
     std::smatch match;
@@ -115,7 +111,7 @@ static std::optional<std::pair<long, long>> parse_range(const std::string &range
     return std::make_pair(start, end);
 }
 
-static std::optional<std::string> resolve_safe_path(const std::filesystem::path &root, const std::filesystem::path &request_path)
+std::optional<std::string> resolve_safe_path(const std::filesystem::path &root, const std::filesystem::path &request_path)
 {
     try
     {
@@ -133,7 +129,7 @@ static std::optional<std::string> resolve_safe_path(const std::filesystem::path 
     return std::nullopt;
 }
 
-void serve_static(const std::string &root, Request *req, Response *res)
+void serve_static(const std::string &root, Request *req, Response *res, bool list_directory = true)
 {
     auto safe_path = resolve_safe_path(root, req->path);
     if (!safe_path)
@@ -151,6 +147,11 @@ void serve_static(const std::string &root, Request *req, Response *res)
     // 处理文件夹
     if (std::filesystem::is_directory(path))
     {
+        if (!list_directory)
+        {
+            res->status(403)->end("403 Forbidden");
+            return;
+        }
         std::ostringstream oss;
         // 开始生成 HTML 列表
         oss << "<html><head><title>Index of " << req->path << "</title></head><body>";
