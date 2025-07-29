@@ -111,6 +111,12 @@ std::string trim_whitespace(const std::string &str)
     return (first == std::string::npos) ? "" : str.substr(first, str.find_last_not_of(" \t\n\r\f\v") - first + 1);
 }
 
+bool iequals(std::string_view a, std::string_view b)
+{
+    return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char a, char b)
+    { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); });
+}
+
 // 1. +号在路径中保持原样，在query里应解析为空格 (golang)
 // 2. %00应认为是风险字符，不允许
 static std::optional<std::string> url_decode(const std::string_view &str, const char char_to_space = '+')
@@ -314,9 +320,8 @@ bool map_key_value_eq(const std::map<std::string, std::string> &dict, const std:
     {
         return false;
     }
-    std::string s = v.value();
-    std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-    return s == value;
+    const std::string &s = v.value();
+    return iequals(s, value);
 }
 
 class LimitReader
@@ -387,7 +392,7 @@ private:
     int status_code = 200;
     long content_length = -1; // 没有指定content-length，不是第一次就调用end，触发chunked下行编码
     std::unique_ptr<callback> stream_callback = nullptr;
-
+    std::vector<char> rbuf;
     friend void _reset_response(std::unique_ptr<Response> &obj, bool is_once_request)
     {
         obj->is_once_request = is_once_request;
@@ -471,7 +476,7 @@ private:
     }
 
 public:
-    Response(int f, poll_server &a) : fd(f), ioServer(a)
+    Response(int f, poll_server &a) : fd(f), ioServer(a), rbuf(65536)
     {
     }
 
@@ -592,8 +597,7 @@ public:
         {
             writeHead(status_code, headers);
         }
-        char buf[131072];
-        int n = f->read(buf, sizeof(buf));
+        int n = f->read(rbuf.data(), rbuf.size());
         if (n < 1)
         {
             f->close();
@@ -601,18 +605,16 @@ public:
         }
         this->stream_callback = std::make_unique<callback>([this, f](poll_server &a, int fd, int out_bytes)
         {
-            if (out_bytes < 1 || this->state != State::HEADERS_SENT)
+            if (out_bytes < 1 || this->state != State::HEADERS_SENT) // 发送失败
             {
-                // 发送失败
                 f->close();
                 this->stream_callback.reset(); // 传输完成，释放引用
                 return;
             }
-            char buf[131072];
-            int n = f->read(buf, sizeof(buf));
+            int n = f->read(rbuf.data(), rbuf.size());
             if (n > 0)
             {
-                this->enqueue(buf, n, *this->stream_callback);
+                this->enqueue(rbuf.data(), n, *this->stream_callback);
             }
             else
             {
@@ -621,7 +623,7 @@ public:
                 this->end("");
             }
         });
-        return enqueue(buf, n, *this->stream_callback);
+        return enqueue(rbuf.data(), n, *this->stream_callback);
     }
 
     bool close()
@@ -633,7 +635,7 @@ public:
 class Request
 {
 private:
-    std::unique_ptr<std::stringstream> _body;
+    std::unique_ptr<std::string> _body;
     std::map<std::string, std::string> _query;
     std::map<std::string, std::string> _cookies;
     std::function<bool(const char *, int, bool)> _on_body_buf = nullptr;
@@ -649,7 +651,7 @@ private:
     }
     friend void _reset_req(std::unique_ptr<Request> &obj)
     {
-        std::stringstream ss;
+        std::string ss;
         obj->_body->swap(ss);
         obj->_query.clear();
         obj->_cookies.clear();
@@ -664,7 +666,7 @@ private:
     }
 
 public:
-    Request() : _body(std::make_unique<std::stringstream>())
+    Request() : _body(std::make_unique<std::string>())
     {
     }
     std::string method;
@@ -685,15 +687,14 @@ public:
     {
         _on_body_buf = max_body_size > 1 ? [this, f = std::move(f), maxsize = max_body_size](const char *buf, int n, bool finish)
         {
-            if (this->_body->write(buf, n).tellp() > maxsize)
+            this->_body->append(buf, n);
+            if (this->_body->length() > maxsize)
             {
                 return false;
             }
             if (finish)
             {
-                const std::string &s = this->_body->str();
-                bool r = f(s.c_str(), s.size(), true);
-                this->_body->str("");
+                bool r = f(this->_body->c_str(), this->_body->length(), true);
                 this->_body->clear();
                 return r;
             }
@@ -1632,10 +1633,17 @@ public:
                 clients.erase(fd);
                 return;
             }
-            if (!clients[fd]->recv(buf, n))
+            auto it = clients.find(fd);
+            if (it != clients.end())
             {
-                // 如果返回false，代表协议解析不合规，关闭链接
-                clients.erase(fd);
+                if (!it->second->recv(buf, n)) // 如果返回false，代表协议解析不合规，关闭链接
+                {
+                    clients.erase(it);
+                    a.closefd(fd);
+                }
+            }
+            else
+            {
                 a.closefd(fd);
             }
         };
