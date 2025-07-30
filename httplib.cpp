@@ -683,7 +683,7 @@ public:
 
     // 注册一个回调函数，每次回调一份body数据，外部可自由处理，返回true则继续接收，false则中断链接；
     // 如果max_body_size>1则内部收集完整body后回调，并要求body数据小于设定值
-    void data(std::function<bool(const char *, int, bool)> f, int max_body_size = 0)
+    void data(std::function<bool(const char *, int, bool)> f, unsigned int max_body_size = 0)
     {
         _on_body_buf = max_body_size > 1 ? [this, f = std::move(f), maxsize = max_body_size](const char *buf, int n, bool finish)
         {
