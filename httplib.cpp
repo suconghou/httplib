@@ -1502,6 +1502,7 @@ struct route
 {
     std::regex pattern;
     Handler fn;
+    route(const std::string &str, Handler f) : pattern(str, std::regex::optimize), fn(std::move(f)) {}
 };
 
 class Server
@@ -1553,43 +1554,43 @@ public:
 
     self &head(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_HEAD].emplace_back(std::regex(pattern), std::move(handler));
+        routes[METHOD_HEAD].emplace_back(pattern, std::move(handler));
         return *this;
     }
 
     self &get(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_GET].emplace_back(std::regex(pattern), std::move(handler));
+        routes[METHOD_GET].emplace_back(pattern, std::move(handler));
         return *this;
     }
 
     self &post(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_POST].emplace_back(std::regex(pattern), std::move(handler));
+        routes[METHOD_POST].emplace_back(pattern, std::move(handler));
         return *this;
     }
 
     self &put(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_PUT].emplace_back(std::regex(pattern), std::move(handler));
+        routes[METHOD_PUT].emplace_back(pattern, std::move(handler));
         return *this;
     }
 
     self &patch(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_PATCH].emplace_back(std::regex(pattern), std::move(handler));
+        routes[METHOD_PATCH].emplace_back(pattern, std::move(handler));
         return *this;
     }
 
     self &delete_(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_DELETE].emplace_back(std::regex(pattern), std::move(handler));
+        routes[METHOD_DELETE].emplace_back(pattern, std::move(handler));
         return *this;
     }
 
     self &options(const std::string &pattern, Handler handler)
     {
-        routes[METHOD_OPTIONS].emplace_back(std::regex(pattern), std::move(handler));
+        routes[METHOD_OPTIONS].emplace_back(pattern, std::move(handler));
         return *this;
     }
 
