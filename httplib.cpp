@@ -662,6 +662,7 @@ private:
         obj->rawQuery.clear();
         obj->headers.clear();
         obj->trailers.clear();
+        obj->params = std::smatch();
         obj->_on_body_buf = nullptr;
     }
 

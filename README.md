@@ -80,6 +80,24 @@ int main() {
   ```cpp
   server.start(8080, [] { return 3500; });
   ```
+### 阻止上传
+
+系统默认对未匹配的路由返回404，但不中断TCP连接。
+如果是一个POST还可以继续上传数据直到请求体完结，连接复用继续处理下一个请求。
+
+如果要对为未匹配的路由返回404后，立即阻止上传，可以加一个兜底的路由：
+```cpp
+server.post("/.*", [](Request *req, Response *res)
+{
+    int limit = 8192;
+    req->data([limit](const char *buf, int len, bool finish) mutable -> bool
+    {
+        limit -= len;
+        return limit > 0; // 已发送了404，如果还收到上传的body超过一定量则直接返回false中断连接，不再复用。
+    });
+    res->status(404)->end("Not Found");
+});
+```
 
 ### 正则路由及捕获参数
 - 使用正则表达式注册路由，并捕获路径参数。
