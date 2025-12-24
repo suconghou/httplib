@@ -821,6 +821,38 @@ private:
         state = STATE_METHOD;
     }
 
+    bool is_space(char c)
+    {
+        return c == ' ' || c == '\t';
+    }
+    bool is_tchar(char c)
+    {
+        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+        {
+            return true;
+        }
+        switch (c)
+        {
+        case '!':
+        case '#':
+        case '$':
+        case '%':
+        case '&':
+        case '\'':
+        case '*':
+        case '+':
+        case '-':
+        case '.':
+        case '^':
+        case '_':
+        case '`':
+        case '|':
+        case '~':
+            return true;
+        }
+        return false;
+    }
+
     // 当返回>0，表明消耗字节解析完成
     // 当返回=0，表明缺少数据，后续补充数据继续执行
     // 当返回<0，表明协议解析非法，需要上层中断执行
@@ -981,7 +1013,7 @@ private:
             while (offset < end)
             {
                 char c = *offset++;
-                if (isalnum(c) || c == '-' || c == '_' || c == '~')
+                if (is_tchar(c))
                 {
                     // header key 中间不能包含空格
                     if (empty_len > 0)
@@ -1198,7 +1230,17 @@ private:
         {
             return false;
         }
-        this->request->headers[this->h_key] = trim_whitespace(std::string(buf, n));
+        const char *start = buf;
+        const char *end = buf + n;
+        while (start < end && is_space(*start))
+        {
+            start++;
+        }
+        while (end > start && is_space(*(end - 1)))
+        {
+            end--;
+        }
+        this->request->headers[this->h_key] = std::string(start, end - start);
         this->h_key.clear();
         return true;
     }
@@ -1210,108 +1252,67 @@ private:
         {
             return false;
         }
-        int keyStart = -1;
-        int keyEnd = -1;
-        int colonPos = -1;
-        bool afterKeySpace = false;
-        // 找到 key 的起始位置和冒号位置
-        for (int i = 0; i < length; ++i)
+        int i = 0;
+        while (i < length && is_space(line[i]))
+        {
+            i++;
+        }
+        const int key_start = i;
+        int key_end = i;
+        bool key_finished = false;
+        for (; i < length; ++i)
         {
             char c = line[i];
-            // 找到 key 起始位置
-            if (keyStart == -1)
+            if (c == ':')
             {
-                if (isspace(c))
-                {
-                    continue; // 跳过 key 前的空格
-                }
-                // 检查首字符有效性
-                if (!isalnum(c) && c != '-' && c != '_' && c != '~')
-                {
-                    return false;
-                }
-                keyStart = i;
-                keyEnd = i;
+                break;
             }
-            else // 如果已找到 key 起始位置
+            if (is_space(c))
             {
-                // 发现冒号，结束 key 部分
-                if (c == ':')
+                key_finished = true;
+            }
+            else if (is_tchar(c))
+            {
+                if (key_finished)
                 {
-                    colonPos = i;
-                    break;
+                    return false; // 之前已经遇到过空格，现在又出现字符 -> 非法 (例如 "A B: val")
                 }
-                if (afterKeySpace)
-                {
-                    // 如果key解析遇到空格，则后续只能是空格直到遇到冒号
-                    if (!isspace(c))
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    if (isspace(c))
-                    {
-                        afterKeySpace = true;
-                    }
-                    else
-                    {
-                        // 检查字符有效性
-                        if (!isalnum(c) && c != '-' && c != '_' && c != '~')
-                        {
-                            return false;
-                        }
-                        keyEnd = i;
-                    }
-                }
+                key_end = i + 1;
+            }
+            else
+            {
+                return false; // 非法字符 (控制字符等)
             }
         }
-        // 验证找到了有效的 key 和冒号
-        if (keyStart == -1 || colonPos == -1 || keyEnd < keyStart)
+        if (i == length || key_end <= key_start)
         {
-            return false;
+            return false; // 没找到冒号，或者 Key 为空
         }
-        // 处理 value
-        int valueStart = -1;
-        int valueEnd = -1;
-        // 从冒号后开始查找 value
-        for (int i = colonPos + 1; i < length; ++i)
+        i = i + 1; // 此时 line[i] 是 ':'
+        while (i < length && is_space(line[i]))
+        {
+            i++; // 跳过冒号后的 OWS (Optional Whitespace)
+        }
+        const int val_start = i;
+        int val_end = i;
+        for (; i < length; ++i)
         {
             char c = line[i];
-            // 找到 value 起始位置
-            if (valueStart == -1)
+            if ((c >= 0x21 && c <= 0x7E) || is_space(c)) // Value 允许: VCHAR (0x21-0x7E) SP/HTAB (空格)
             {
-                if (!isspace(c))
+                if (!is_space(c))
                 {
-                    // 确保 value 只包含可见字符 (ASCII 32-126)
-                    if (c < 32 || c > 126)
-                    {
-                        return false;
-                    }
-                    valueStart = i;
-                    valueEnd = i; // 初始化 valueEnd
+                    val_end = i + 1; // 仅在非空字符时更新结尾，自动去除尾部空格
                 }
             }
             else
             {
-                // 确保 value 只包含可见字符 (ASCII 32-126)
-                if (c < 32 || c > 126)
-                {
-                    return false;
-                }
-                // 更新非空格的 value 结束位置
-                if (!isspace(c))
-                {
-                    valueEnd = i;
-                }
+                return false; // 遇到非法控制字符 (如 \r, \n, \0 等),注意：调用者传进来的 length 不应包含行末的 CRLF，否则这里会报错
             }
         }
-        // 提取并转换 key
-        key = std::string(line + keyStart, keyEnd - keyStart + 1);
+        key = std::string(line + key_start, key_end - key_start);
         std::transform(key.begin(), key.end(), key.begin(), ::tolower);
-        // value 可以为空
-        value = valueStart == -1 ? "" : std::string(line + valueStart, valueEnd - valueStart + 1);
+        value = std::string(line + val_start, val_end - val_start);
         return true;
     }
     // 处理 HTTP chunked encoding 的数据
