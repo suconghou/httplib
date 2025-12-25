@@ -26,7 +26,7 @@
 #include <unistd.h>
 #include <vector>
 
-static constexpr size_t MAX_BUFFER_SIZE = 20 * 1024 * 1024;
+static constexpr size_t MAX_BUFFER_SIZE = 512 * 1024;
 
 static constexpr std::string_view METHOD_HEAD = "HEAD";
 static constexpr std::string_view METHOD_GET = "GET";
@@ -117,6 +117,39 @@ bool iequals(std::string_view a, std::string_view b)
     { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); });
 }
 
+bool is_space(char c)
+{
+    return c == ' ' || c == '\t';
+}
+
+bool is_tchar(char c)
+{
+    if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+    {
+        return true;
+    }
+    switch (c)
+    {
+    case '!':
+    case '#':
+    case '$':
+    case '%':
+    case '&':
+    case '\'':
+    case '*':
+    case '+':
+    case '-':
+    case '.':
+    case '^':
+    case '_':
+    case '`':
+    case '|':
+    case '~':
+        return true;
+    }
+    return false;
+}
+
 // 1. +号在路径中保持原样，在query里应解析为空格 (golang)
 // 2. %00应认为是风险字符，不允许
 static std::optional<std::string> url_decode(const std::string_view &str, const char char_to_space = '+')
@@ -128,7 +161,7 @@ static std::optional<std::string> url_decode(const std::string_view &str, const 
     {
         if (str[i] == '%')
         {
-            if (i + 2 < l && std::isxdigit(str[i + 1]) && std::isxdigit(str[i + 2]))
+            if (i + 2 < l && std::isxdigit(static_cast<unsigned char>(str[i + 1])) && std::isxdigit(static_cast<unsigned char>(str[i + 2])))
             {
                 int value;
                 auto res = std::from_chars(str.data() + i + 1, str.data() + i + 3, value, 16);
@@ -211,7 +244,7 @@ std::pair<int, long> parse_chunk_size(const char *buf, int n)
             while (p < end && *p != '\r')
             {
                 char c = *p;
-                if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '!' || c == '#' || c == '$' || c == '%' || c == '&' || c == '\'' || c == '*' || c == '+' || c == '-' || c == '.' || c == '^' || c == '_' || c == '`' || c == '|' || c == '~' || c == '=' || c == ' ' || c == '"'))
+                if (!(is_tchar(c) || c == '=' || c == ' ' || c == '"'))
                 {
                     return {-4, 0};
                 }
@@ -430,8 +463,7 @@ private:
     // 下行header key校验
     static bool valid_header_key(const std::string_view &s)
     {
-        return std::all_of(s.begin(), s.end(), [](char c)
-        { return isalnum(c) || c == '-' || c == '_' || c == '~'; });
+        return std::all_of(s.begin(), s.end(), is_tchar);
     }
     // 下行header value校验
     static bool valid_header_value(const std::string_view &s)
@@ -821,38 +853,6 @@ private:
         state = STATE_METHOD;
     }
 
-    bool is_space(char c)
-    {
-        return c == ' ' || c == '\t';
-    }
-    bool is_tchar(char c)
-    {
-        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
-        {
-            return true;
-        }
-        switch (c)
-        {
-        case '!':
-        case '#':
-        case '$':
-        case '%':
-        case '&':
-        case '\'':
-        case '*':
-        case '+':
-        case '-':
-        case '.':
-        case '^':
-        case '_':
-        case '`':
-        case '|':
-        case '~':
-            return true;
-        }
-        return false;
-    }
-
     // 当返回>0，表明消耗字节解析完成
     // 当返回=0，表明缺少数据，后续补充数据继续执行
     // 当返回<0，表明协议解析非法，需要上层中断执行
@@ -1104,9 +1104,10 @@ private:
                                 const auto &cl = map_get_key_value(this->request->headers, "content-length");
                                 if (cl)
                                 {
-                                    std::stringstream ss(cl.value());
+                                    const std::string &clv = cl.value();
                                     long num;
-                                    if (ss >> num && num >= 0)
+                                    auto res = std::from_chars(clv.data(), clv.data() + clv.size(), num);
+                                    if (res.ec == std::errc() && num >= 0)
                                     {
                                         this->body_length = num;
                                     }
@@ -1142,7 +1143,7 @@ private:
                                     this->request->rawQuery = f == std::string::npos ? std::move(qq) : qq.substr(0, f);
                                 }
                                 // 此时，路由对应函数调用执行
-                                _reset_response(this->response, this->http_10 || map_key_value_eq(this->request->headers, "connection", "close"));
+                                _reset_response(this->response, this->http_10 ? (!map_key_value_eq(this->request->headers, "connection", "keep-alive")) : map_key_value_eq(this->request->headers, "connection", "close"));
                                 execute(*this);
                                 goto STATE_BODY_START;
                             }
