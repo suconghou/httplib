@@ -113,8 +113,14 @@ std::string trim_whitespace(const std::string &str)
 
 bool iequals(std::string_view a, std::string_view b)
 {
-    return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char a, char b)
-    { return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); });
+    if (a.size() != b.size())
+    {
+        return false;
+    }
+    return std::equal(a.begin(), a.end(), b.begin(), [](unsigned char ac, unsigned char bc)
+    {
+        return std::tolower(ac) == std::tolower(bc);
+    });
 }
 
 bool is_space(char c)

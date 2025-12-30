@@ -35,6 +35,7 @@ static const std::unordered_map<std::string, std::string> mime_types = {
     {".mov", "video/quicktime"},
     {".mkv", "video/x-matroska"},
     {".avi", "video/x-msvideo"},
+    {".ts", "video/mp2t"},
 
     // 音频类型
     {".mp3", "audio/mpeg"},
@@ -67,6 +68,7 @@ static const std::unordered_map<std::string, std::string> mime_types = {
     // 其他类型
     {".xml", "application/xml"},
     {".swf", "application/x-shockwave-flash"},
+    {".wasm", "application/wasm"},
 
     // 默认二进制类型
     {"default", "application/octet-stream"},
@@ -173,13 +175,14 @@ void serve_static(const std::string &root, Request *req, Response *res, bool lis
     }
     auto path = *safe_path;
     // 检查文件或目录是否存在
-    if (!std::filesystem::exists(path))
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0)
     {
         res->status(404)->end("404 Not Found");
         return;
     }
     // 处理文件夹
-    if (std::filesystem::is_directory(path))
+    if (S_ISDIR(st.st_mode))
     {
         if (!list_directory)
         {
@@ -210,61 +213,57 @@ void serve_static(const std::string &root, Request *req, Response *res, bool lis
         return;
     }
     // 处理文件
-    if (std::filesystem::is_regular_file(path))
+    if (!S_ISREG(st.st_mode))
     {
-        auto file = std::make_unique<std::ifstream>(path, std::ios::binary);
-        if (!file->is_open())
-        {
-            res->status(500)->end("500 Internal Server Error");
-            return;
-        }
-        const int64_t size = std::filesystem::file_size(path);
-
-        // 获取文件的最后修改时间
-        auto file_time = std::filesystem::last_write_time(path);
-        auto file_time_t = std::chrono::system_clock::to_time_t(std::chrono::time_point_cast<std::chrono::system_clock::duration>(file_time - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now()));
-
-        // 格式化为 HTTP 日期格式
-        std::string last_modified = time_to_gmt_string(file_time_t);
-
-        // 检查 If-Modified-Since 头
-        if (map_key_value_eq(req->headers, "if-modified-since", last_modified))
-        {
-            // 文件未修改，返回 304 Not Modified
-            res->status(304)->end("", {{"Last-Modified", last_modified}});
-            return;
-        }
-
-        const auto &rr = map_get_key_value(req->headers, "range");
-        std::optional<std::pair<int64_t, int64_t>> r;
-        if (!rr || !(r = parse_range(rr.value().get(), size)))
-        {
-            std::map<std::string, std::string> headers = {
-                {"Content-Type", get_mime_type(path)},
-                {"Accept-Ranges", "bytes"},
-                {"Last-Modified", last_modified}};
-            res->length(size)->stream(std::make_shared<FileReader>(std::move(file), size), headers);
-            return;
-        }
-        auto const &[start, end] = r.value();
-        // 验证范围合法性
-        if (start >= size || start > end || end >= size)
-        {
-            res->status(416)->end("416 Range Not Satisfiable");
-            return;
-        }
-        // 计算需要传输的字节数
-        auto const length = end - start + 1;
-        // 设置文件读取位置
-        file->seekg(start);
-        // 设置响应头
-        std::map<std::string, std::string> headers = {
-            {"Content-Type", get_mime_type(path)},
-            {"Content-Range", std::format("bytes {}-{}/{}", start, end, size)},
-            {"Accept-Ranges", "bytes"}};
-        // 发送 206 Partial Content 响应
-        res->status(206)->length(length)->stream(std::make_shared<FileReader>(std::move(file), length), headers);
+        res->status(403)->end("403 Forbidden");
         return;
     }
-    res->status(404)->end("Not Found");
+    auto file = std::make_unique<std::ifstream>(path, std::ios::binary);
+    if (!file->is_open())
+    {
+        res->status(500)->end("500 Internal Server Error");
+        return;
+    }
+    const int64_t size = st.st_size;
+
+    // 格式化为 HTTP 日期格式
+    std::string last_modified = time_to_gmt_string(st.st_mtime);
+
+    // 检查 If-Modified-Since 头
+    if (map_key_value_eq(req->headers, "if-modified-since", last_modified))
+    {
+        // 文件未修改，返回 304 Not Modified
+        res->status(304)->end("", {{"Last-Modified", last_modified}});
+        return;
+    }
+
+    const auto &rr = map_get_key_value(req->headers, "range");
+    std::optional<std::pair<int64_t, int64_t>> r;
+    if (!rr || !(r = parse_range(rr.value().get(), size)))
+    {
+        std::map<std::string, std::string> headers = {
+            {"Content-Type", get_mime_type(path)},
+            {"Accept-Ranges", "bytes"},
+            {"Last-Modified", last_modified}};
+        res->length(size)->stream(std::make_shared<FileReader>(std::move(file), size), headers);
+        return;
+    }
+    auto const &[start, end] = r.value();
+    // 验证范围合法性
+    if (start >= size || start > end || end >= size)
+    {
+        res->status(416)->end("416 Range Not Satisfiable");
+        return;
+    }
+    // 计算需要传输的字节数
+    auto const length = end - start + 1;
+    // 设置文件读取位置
+    file->seekg(start);
+    // 设置响应头
+    std::map<std::string, std::string> headers = {
+        {"Content-Type", get_mime_type(path)},
+        {"Content-Range", std::format("bytes {}-{}/{}", start, end, size)},
+        {"Accept-Ranges", "bytes"}};
+    // 发送 206 Partial Content 响应
+    res->status(206)->length(length)->stream(std::make_shared<FileReader>(std::move(file), length), headers);
 }
