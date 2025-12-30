@@ -81,7 +81,8 @@ const std::string &get_mime_type(std::string_view path)
     {
         std::string ext(path.substr(pos));
         // 大小写无关处理（将扩展名统一转换为小写）
-        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c)
+        { return std::tolower(c); });
         // 在 MIME 表中查找
         auto it = mime_types.find(ext);
         if (it != mime_types.end())
@@ -93,22 +94,55 @@ const std::string &get_mime_type(std::string_view path)
     return mime_types.at("default");
 }
 
+std::string time_to_gmt_string(time_t t)
+{
+    struct tm *tstruct = gmtime(&t);
+    char buffer[64];
+    strftime(buffer, sizeof(buffer), "%a, %d %b %Y %H:%M:%S GMT", tstruct);
+    return std::string(buffer);
+}
+
 std::string path_join(const std::string &dir, const std::string &name)
 {
     return dir.ends_with('/') ? (dir + name) : (dir + "/" + name);
 }
 
-std::optional<std::pair<long, long>> parse_range(const std::string &range_str, long file_size)
+// 解析 "bytes=0-100" 或 "bytes=0-" 或 "bytes=-100"
+std::optional<std::pair<int64_t, int64_t>> parse_range(std::string_view s, int64_t size)
 {
-    static const std::regex range_regex(R"(bytes=(\d*)-(\d*))", std::regex::optimize);
-    std::smatch match;
-    if (!std::regex_match(range_str, match, range_regex))
+    if (size <= 0 || !s.starts_with("bytes="))
     {
         return std::nullopt;
     }
-    long start = match[1].str().empty() ? 0 : std::stoul(match[1].str());
-    long end = match[2].str().empty() ? file_size - 1 : std::stoul(match[2].str());
-    return std::make_pair(start, end);
+    s.remove_prefix(6);
+    auto dash = s.find('-');
+    if (dash == std::string_view::npos)
+    {
+        return std::nullopt;
+    }
+    auto to_int = [](std::string_view sv) -> std::optional<int64_t>
+    {
+        int64_t v;
+        auto [ptr, ec] = std::from_chars(sv.data(), sv.data() + sv.size(), v);
+        return (ec == std::errc{} && ptr == sv.end()) ? std::optional{v} : std::nullopt;
+    };
+    auto start_opt = to_int(s.substr(0, dash));
+    auto end_opt = to_int(s.substr(dash + 1));
+    int64_t start = 0, end = size - 1;
+    if (start_opt) // 格式: bytes=start-end 或 bytes=start-
+    {
+        start = *start_opt;
+        end = end_opt.value_or(size - 1);
+    }
+    else if (end_opt) //  格式: bytes=-suffix
+    {
+        start = std::max<int64_t>(0, size - *end_opt); // 后缀长度超过文件大小则从0开始
+    }
+    else
+    {
+        return std::nullopt; // 格式: bytes=- (无效)
+    }
+    return std::pair{start, std::min(end, size - 1)};
 }
 
 std::optional<std::string> resolve_safe_path(const std::filesystem::path &root, const std::filesystem::path &request_path)
@@ -184,16 +218,14 @@ void serve_static(const std::string &root, Request *req, Response *res, bool lis
             res->status(500)->end("500 Internal Server Error");
             return;
         }
-        const long size = std::filesystem::file_size(path);
+        const int64_t size = std::filesystem::file_size(path);
 
         // 获取文件的最后修改时间
         auto file_time = std::filesystem::last_write_time(path);
         auto file_time_t = std::chrono::system_clock::to_time_t(std::chrono::time_point_cast<std::chrono::system_clock::duration>(file_time - std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now()));
 
         // 格式化为 HTTP 日期格式
-        std::ostringstream oss;
-        oss << std::put_time(std::gmtime(&file_time_t), "%a, %d %b %Y %H:%M:%S GMT");
-        auto const &last_modified = oss.str();
+        std::string last_modified = time_to_gmt_string(file_time_t);
 
         // 检查 If-Modified-Since 头
         if (map_key_value_eq(req->headers, "if-modified-since", last_modified))
@@ -204,8 +236,8 @@ void serve_static(const std::string &root, Request *req, Response *res, bool lis
         }
 
         const auto &rr = map_get_key_value(req->headers, "range");
-        std::optional<std::pair<long, long>> r;
-        if (!rr || !(r = parse_range(rr.value(), size)))
+        std::optional<std::pair<int64_t, int64_t>> r;
+        if (!rr || !(r = parse_range(rr.value().get(), size)))
         {
             std::map<std::string, std::string> headers = {
                 {"Content-Type", get_mime_type(path)},
@@ -216,7 +248,7 @@ void serve_static(const std::string &root, Request *req, Response *res, bool lis
         }
         auto const &[start, end] = r.value();
         // 验证范围合法性
-        if (start >= size || end >= size || start > end)
+        if (start >= size || start > end || end >= size)
         {
             res->status(416)->end("416 Range Not Satisfiable");
             return;

@@ -328,7 +328,7 @@ std::optional<std::string> static decode_path(const std::string &p)
     std::copy(items.begin(), items.end(), std::ostream_iterator<std::string>(oss, "/")); // 拼接元素后面会跟一个/
     std::string result = oss.str();
     // 如果原始路径不以 '/' 结尾，移除结果中的最后一个 '/'
-    if (p.back() != '/')
+    if (!p.ends_with('/'))
     {
         result.pop_back();
     }
@@ -489,7 +489,8 @@ private:
         for (auto const &[key, val] : headers)
         {
             auto k = trim_whitespace(key);
-            std::transform(k.begin(), k.end(), k.begin(), ::tolower);
+            std::transform(k.begin(), k.end(), k.begin(), [](unsigned char c)
+            { return std::tolower(c); });
             if (k != "content-length" && k != "transfer-encoding")
             {
                 if (!valid_header_key(k))
@@ -515,7 +516,7 @@ public:
     // 高效的日期生成函数，返回静态缓冲区的指针
     static const char *date()
     {
-        static char buffer[64];
+        thread_local char buffer[64];
         time_t now = time(0);
         struct tm *tstruct = gmtime(&now);
         strftime(buffer, sizeof(buffer), "%a, %d %b %Y %H:%M:%S GMT", tstruct);
@@ -556,6 +557,10 @@ public:
 
     int write(const std::string &str)
     {
+        if (state == State::FINISHED)
+        {
+            return -1;
+        }
         if (str.length() < 1)
         {
             return 0;
@@ -715,10 +720,10 @@ public:
     std::map<std::string, std::string> trailers;
 
     // 注册一个回调函数，每次回调一份body数据，外部可自由处理，返回true则继续接收，false则中断链接；
-    // 如果max_body_size>1则内部收集完整body后回调，并要求body数据小于设定值
+    // 如果max_body_size>0则内部收集完整body后回调，并要求body数据小于设定值
     void data(std::function<bool(const char *, int, bool)> f, unsigned int max_body_size = 0)
     {
-        _on_body_buf = max_body_size > 1 ? [this, f = std::move(f), maxsize = max_body_size](const char *buf, int n, bool finish)
+        _on_body_buf = max_body_size > 0 ? [this, f = std::move(f), maxsize = max_body_size](const char *buf, int n, bool finish)
         {
             this->_body->append(buf, n);
             if (this->_body->length() > maxsize)
@@ -1220,7 +1225,8 @@ private:
     bool onHeaderKey(const char *buf, int n)
     {
         auto s = std::string(buf, n);
-        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c)
+        { return std::tolower(c); });
         this->h_key = std::move(s);
         return true;
     }
@@ -1312,7 +1318,8 @@ private:
             }
         }
         key = std::string(line + key_start, key_end - key_start);
-        std::transform(key.begin(), key.end(), key.begin(), ::tolower);
+        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c)
+        { return std::tolower(c); });
         value = std::string(line + val_start, val_end - val_start);
         return true;
     }
