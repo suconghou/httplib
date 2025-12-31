@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 // 全局静态 MIME 类型映射表
-static const std::unordered_map<std::string, std::string> mime_types = {
+inline const std::unordered_map<std::string, std::string> mime_types = {
     // 文本类型
     {".html", "text/html"},
     {".htm", "text/html"},

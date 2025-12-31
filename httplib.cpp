@@ -105,10 +105,10 @@ static const std::unordered_map<int, std::string> status_codes = {
 
 };
 // 去除开头和结尾的空白字符
-std::string trim_whitespace(const std::string &str)
+std::string_view trim_whitespace(std::string_view str)
 {
     const auto first = str.find_first_not_of(" \t\n\r\f\v");
-    return (first == std::string::npos) ? "" : str.substr(first, str.find_last_not_of(" \t\n\r\f\v") - first + 1);
+    return (first == std::string_view::npos) ? "" : str.substr(first, str.find_last_not_of(" \t\n\r\f\v") - first + 1);
 }
 
 bool iequals(std::string_view a, std::string_view b)
@@ -494,10 +494,8 @@ private:
         }
         for (auto const &[key, val] : headers)
         {
-            auto k = trim_whitespace(key);
-            std::transform(k.begin(), k.end(), k.begin(), [](unsigned char c)
-            { return std::tolower(c); });
-            if (k != "content-length" && k != "transfer-encoding")
+            const std::string_view k = trim_whitespace(key);
+            if (!iequals(k, "content-length") && !iequals(k, "transfer-encoding"))
             {
                 if (!valid_header_key(k))
                 {
