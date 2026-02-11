@@ -879,10 +879,10 @@ private:
             while (offset < end)
             {
                 char c = *offset++;
-                if (c >= 'A' && c <= 'Z')
+                if (c >= 'A' && c <= 'Z') [[likely]]
                 {
                     method_len++;
-                    if (method_len > 8)
+                    if (method_len > 8) [[unlikely]]
                     {
                         return ERROR_LENGTH_EXCEEDED;
                     }
@@ -921,14 +921,14 @@ private:
             while (offset < end)
             {
                 char c = *offset++;
-                if (c >= 0x21 && c <= 0x7e)
+                if (c >= 0x21 && c <= 0x7e) [[likely]]
                 {
                     if (req_len == 0 && c != '/') // request uri 必须以/开头
                     {
                         return ERROR_INVALID_CHAR;
                     }
                     req_len++;
-                    if (req_len > 2000)
+                    if (req_len > 2000) [[unlikely]]
                     {
                         return ERROR_LENGTH_EXCEEDED;
                     }
@@ -940,7 +940,7 @@ private:
                     {
                         return ERROR_INVALID_CHAR;
                     }
-                    if (onRequestURI(start, req_len))
+                    if (onRequestURI(start, req_len)) [[likely]]
                     {
                         eat += req_len + 1;
                         state = STATE_HTTP_VERSION;
@@ -1022,7 +1022,7 @@ private:
             while (offset < end)
             {
                 char c = *offset++;
-                if (is_tchar(c))
+                if (is_tchar(c)) [[likely]]
                 {
                     // header key 中间不能包含空格
                     if (empty_len > 0)
@@ -1030,7 +1030,7 @@ private:
                         return ERROR_INVALID_CHAR;
                     }
                     header_key_len++;
-                    if (header_key_len > 50)
+                    if (header_key_len > 50) [[unlikely]]
                     {
                         return ERROR_LENGTH_EXCEEDED;
                     }
@@ -1079,7 +1079,7 @@ private:
             while (offset < end)
             {
                 char c = *offset++;
-                if (c >= 0x20 && c <= 0x7e)
+                if (c >= 0x20 && c <= 0x7e) [[likely]]
                 {
                     header_value_len++;
                     if (header_value_len > 2000)
@@ -1103,7 +1103,7 @@ private:
                         {
                             return ERROR_INVALID_CHAR;
                         }
-                        if (onHeaderValue(start, header_value_len))
+                        if (onHeaderValue(start, header_value_len)) [[likely]]
                         {
                             if (d == '\r' && e == '\n')
                             {
@@ -1424,7 +1424,7 @@ private:
                 int data_available = n - used;
                 int read_size = std::min(chunk_remaining, data_available);
                 // 读取并处理数据
-                if (read_size > 0)
+                if (read_size > 0) [[likely]]
                 {
                     if (!_call_on_body_buf(this->request, buf + used, read_size, false))
                     {
