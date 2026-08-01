@@ -587,23 +587,33 @@ public:
         {
             return -1;
         }
-        if (state == State::READY)
-        {
-            content_length = s.length();
-            writeHead(status_code, head);
-        }
-        auto cc = [this](poll_server &a, int fd, int out_bytes)
+        // once必须按值捕获：管道场景下本响应还在写队列中，下一个请求的_reset_response会覆盖is_once_request，
+        // 若回调时再读共享字段，会用下一请求的值误判导致提前close（丢弃后续管道响应）
+        auto cc = [this, once = this->is_once_request](poll_server &, int, int)
         {
             this->stream_callback = nullptr;
-            if (this->is_once_request)
+            if (once)
             {
                 this->close();
             }
         };
         int ret = 0;
+        if (state == State::READY)
+        {
+            content_length = s.length();
+            if (s.empty())
+            {
+                // 空body：完成回调挂到headers的写入上（异步执行）。若走0字节body的同步回调，一次性请求会立即close导致刚入队的headers被丢弃
+                auto h = headers(head);
+                state = State::FINISHED;
+                return ioServer.write(fd, std::move(h), cc);
+            }
+            writeHead(status_code, head);
+        }
         if (content_length >= 0)
         {
-            // 非 chunked 模式，直接用 enqueue 发送
+            // 非 chunked 模式。先置FINISHED：body为空时回调同步执行（此刻此前数据均已入队），回调可能触发close，之后不得再触碰this
+            state = State::FINISHED;
             ret = enqueue(s, cc);
         }
         else
@@ -614,10 +624,10 @@ public:
             {
                 ret = enqueue(s, nullptr);
             }
-            // 2. 发送结束 chunk（带回调）
+            state = State::FINISHED;
+            // 2. 发送结束 chunk（带回调，0\r\n\r\n非空，异步执行）
             ret = enqueue("", cc);
         }
-        state = State::FINISHED;
         return ret;
     }
 
@@ -626,7 +636,8 @@ public:
     // 调用此方法不可与write，end等方法混用,也不可调用多次
     int stream(std::shared_ptr<LimitReader> f, const std::map<std::string, std::string> &headers = {})
     {
-        if (!f || f->eof() || !(state == State::READY || state == State::HEADERS_SENT))
+        // 不检查f->eof()：空reader由end("")正常收尾（否则0字节内容会导致无响应挂起）
+        if (!f || !(state == State::READY || state == State::HEADERS_SENT))
         {
             return -1;
         }
@@ -634,17 +645,19 @@ public:
         {
             return -2; // 错误码：流操作已存在
         }
-        if (state == State::READY)
-        {
-            writeHead(status_code, headers);
-        }
+        // 先read再writeHead：若内容为空且处于READY态，end("",headers)会把完成回调挂到headers写上（异步执行），
+        // 一次性连接也能正常发出headers；若先writeHead再发现空，end("")的同步回调会立即close导致headers被丢弃
         int n = f->read(rbuf.data(), rbuf.size());
         if (n < 1)
         {
             f->close();
-            return end("");
+            return state == State::READY ? end("", headers) : end("");
         }
-        this->stream_callback = std::make_unique<callback>([this, f](poll_server &a, int fd, int out_bytes)
+        if (state == State::READY)
+        {
+            writeHead(status_code, headers);
+        }
+        this->stream_callback = std::make_unique<callback>([this, f](poll_server &, int, int out_bytes)
         {
             if (out_bytes < 1 || this->state != State::HEADERS_SENT) // 发送失败
             {
@@ -1466,8 +1479,10 @@ private:
         }
         else if (this->body_length >= 0)
         {
-            int remaining = this->body_length - this->body_received;
-            int read_size = std::min(remaining, n);
+            // remaining 恒 >= 0，先在 long 域比较再窄化（n <= 64K）；
+            // 此前直接窄化为 int，CL > 2^31 时变成负数，导致 _body->append 抛 length_error 未被捕获而崩溃
+            long remaining = this->body_length - this->body_received;
+            int read_size = remaining > n ? n : (int)remaining;
             this->body_received += read_size;
             bool finished = (this->body_received >= this->body_length);
             bool ok = _call_on_body_buf(this->request, buf, read_size, finished);
@@ -1526,9 +1541,10 @@ class Server
 private:
     std::unordered_map<std::string_view, std::vector<route>> routes;
     std::unordered_map<int, std::unique_ptr<ConnCtx>> clients;
+    std::vector<int> pending_close; // 已关闭待销毁的连接。关闭回调可能发生在parse/handler/write回调的调用栈上，同步erase会使栈上的ConnCtx悬垂，故延迟到on_loop统一析构
     int sockets = 0;
 
-    void defaultHandler(Request *req, Response *res)
+    void defaultHandler(Request *, Response *res)
     {
         res->status(404)->end("not found");
     }
@@ -1626,9 +1642,15 @@ public:
 
     bool start(int port, std::function<int()> timer, const std::string &host = "")
     {
-        auto on_loop = [this, timer](poll_server &a, int n)
+        auto on_loop = [this, timer](poll_server &, int n)
         {
             sockets = n;
+            // 事件循环顶部（安全上下文）统一析构已关闭的连接
+            for (int fd : pending_close)
+            {
+                clients.erase(fd);
+            }
+            pending_close.clear();
             return timer();
         };
 
@@ -1636,6 +1658,11 @@ public:
         {
             if (fd > 0)
             {
+                if (!pending_close.empty())
+                {
+                    std::erase(pending_close, fd); // fd号复用了待清扫的连接，取消清扫防止误杀新连接
+                }
+                // 若该fd有待清扫的旧条目，此处赋值会直接析构旧ConnCtx（accept分支上下文，安全）
                 clients[fd] = std::make_unique<ConnCtx>(fd, a, [this](const ConnCtx &c)
                 { this->execute(c); });
             }
@@ -1645,7 +1672,8 @@ public:
         {
             if (n < 1)
             {
-                clients.erase(fd);
+                // 延迟析构：此时可能正位于parse/handler/write回调的调用栈上（如handler调用res->close()），同步erase会造成悬垂指针
+                pending_close.push_back(fd);
                 return;
             }
             auto it = clients.find(fd);

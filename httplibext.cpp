@@ -153,7 +153,8 @@ std::optional<std::string> resolve_safe_path(const std::filesystem::path &root, 
     {
         auto canonical_root = std::filesystem::canonical(std::filesystem::absolute(root));
         auto full_path = std::filesystem::canonical(canonical_root / request_path.relative_path()).string();
-        if (full_path.find(canonical_root.string()) == 0)
+        const auto root_str = canonical_root.string();
+        if (full_path == root_str || full_path.starts_with(root_str == "/" ? "/" : root_str + "/"))
         {
             return full_path;
         }

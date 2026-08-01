@@ -163,6 +163,13 @@ server.post("/.*", [](Request *req, Response *res)
   res->writeHead(200, {{"Content-Type", "text/plain"}});
   ```
 
+## 使用约束与已知限制
+
+- 路由handler与body回调中可直接调用`res->close()`主动断开连接（连接上下文延迟析构，库保证安全）
+- `stream`不可与`write`/`end`混用；`writeHead`/`write`之后也不要再以`end("")`空body收尾，否则未发完的数据可能被丢弃
+- 所有handler与回调均在事件循环线程中执行，请勿做阻塞操作（sleep、重IO等），否则会阻塞全部连接
+- 已知限制：管道（pipelining）中的下一个请求会打断正在进行中的流式响应；POST/PUT/PATCH无`Content-Length`也无`Transfer-Encoding`时该请求不会完成；不支持`Expect: 100-continue`（curl发大body前会等待约1秒）；HEAD请求不会自动映射到GET处理
+
 ## 构建
 
 编译时需先将 https://github.com/suconghou/poll_server 的`poll.cpp`文件拷贝到当前目录。
