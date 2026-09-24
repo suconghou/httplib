@@ -133,11 +133,17 @@ std::optional<std::pair<int64_t, int64_t>> parse_range(std::string_view s, int64
     int64_t start = 0, end = size - 1;
     if (start_opt) // 格式: bytes=start-end 或 bytes=start-
     {
+        if (*start_opt < 0)
+            return std::nullopt;
         start = *start_opt;
         end = end_opt.value_or(size - 1);
+        if (end_opt && *end_opt < 0)
+            return std::nullopt;
     }
     else if (end_opt) //  格式: bytes=-suffix
     {
+        if (*end_opt <= 0)
+            return std::nullopt;
         start = std::max<int64_t>(0, size - *end_opt); // 后缀长度超过文件大小则从0开始
     }
     else
